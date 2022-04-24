@@ -30,11 +30,9 @@ import "github.com/uptutu/auth"
 
 ### Parse Token in Gin Middleware
 ```go
-
-
     // 使用认证中间件
-	// NewSession 函数中传入生成 Token 的结构体实例或指针皆可
-	// 解析到的用户信息会存在 ctx *gin.Context 中
+    // NewSession 函数中传入生成 Token 的结构体实例或指针皆可
+    // 解析到的用户信息会存在 ctx *gin.Context 中
     r.Use(auth.Identify(auth.NewSession(User{})))
 
     // 使用认证中间件
@@ -81,6 +79,68 @@ func main() {
         })
     }
         ...
+```
+# Advanced
+实现自己实现 `auth.Session` 的接口，用一个自己的结构体生成和解析 Token。
+```go
+type Session interface {
+	ValueContextKey() string
+	GenerateAccessToken() (string, error)
+	ParseToken(ctx context.Context, token string) error
+	SetIntoGinCtx(ctx *gin.Context)
+	GetFromGinCtx(ctx *gin.Context) (interface{}, error)
+}
+
+...
+type asession struct {
+}
+
+func (a asession) CustomerFunc() string {
+return "customer"
+}
+
+func (a asession) ValueContextKey() string {
+return "ok"
+}
+
+func (a asession) GenerateAccessToken() (string, error) {
+return "ok", nil
+}
+
+func (a asession) ParseToken(ctx context.Context, token string) error {
+return nil
+}
+
+func (a asession) SetIntoGinCtx(ctx *gin.Context) {
+return
+}
+
+func (a asession) GetFromGinCtx(ctx *gin.Context) (interface{}, error) {
+return nil, nil
+}
+
+```
+中间件上的使用流程上也没有改变：
+```go
+    // 使用认证中间件
+    // NewSession 函数中传入生成 Token 的结构体实例或指针皆可
+    // 解析到的用户信息会存在 ctx *gin.Context 中
+    r.Use(auth.Identify(auth.NewSession(asession{})))
+
+    // 使用认证中间件
+    r.GET("/", func(c *gin.Context) {
+        data, err := auth.GetAuthenticationDataFrom(c, asession{}.ValueContextKey())
+        if err != nil {
+            c.AbortWithStatus(401)
+            return
+        }
+    // 使用自己定义的用户信息断言
+        user := data.(asession)
+        c.JSON(200, gin.H{
+            "user": user,
+        })
+
+    })
 ```
 
 # License 
