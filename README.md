@@ -81,6 +81,7 @@ func main() {
         ...
 ```
 # Advanced
+## 自定义认证结构体
 实现自己实现 `auth.Session` 的接口，用一个自己的结构体生成和解析 Token。
 ```go
 type Session interface {
@@ -141,6 +142,32 @@ return nil, nil
         })
 
     })
+```
+## 通过中间件层认证请求
+假设现在有一个接口是获取订单信息，检验该请求的订单 ID 是否为该用户的订单
+```go
+func IsUserOrder(c *gin.Context, sess Session){
+	orderID := c.Request.Query("order_id")
+    authInfo, ok := sess.(User)
+	if !ok {
+		c.JSON(http.StatusInternalServerError, nil)
+		c.Abrode()
+		return
+    }
+	found := db.Select("1").From("orders").Where("user_id = ?", authInfo.ID).Where("id = ?", orderID).Exists()
+    if !found {
+        c.JSON(http.StatusBadRequest, )
+        c.Abrode()
+        return
+    }
+}
+
+...
+
+r.Use(auth.Identify(auth.NewSession(User{}), IsUserOrder))
+r.GET("/order/id", func(c *gin.Context) {
+	...
+}
 ```
 
 # License 

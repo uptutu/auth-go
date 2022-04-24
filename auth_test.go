@@ -56,9 +56,9 @@ func TestNewSession(t *testing.T) {
 
 	s = NewSession(&asession{})
 	assert.NotNil(t, s)
-	as, ok = s.(asession)
+	asPtr, ok := s.(*asession)
 	assert.True(t, ok)
-	assert.Equal(t, "customer", as.CustomerFunc())
+	assert.Equal(t, "customer", asPtr.CustomerFunc())
 }
 
 func TestGenerate(t *testing.T) {

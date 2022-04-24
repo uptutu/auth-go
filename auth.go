@@ -46,7 +46,8 @@ type Session interface {
 	ValueContextKey() string
 	GenerateAccessToken() (string, error)
 	ParseToken(ctx context.Context, token string) error
-	SetIntoGinCtx(ctx *gin.Context)
+	IsParsed() bool
+	SetIntoGinCtx(ctx *gin.Context) error
 	GetFromGinCtx(ctx *gin.Context) (interface{}, error)
 }
 
@@ -58,11 +59,6 @@ type DefaultSession struct {
 }
 
 func NewSession(ext interface{}) Session {
-	if ext != nil &&
-		reflect.TypeOf(ext).Kind() == reflect.Ptr {
-		ext = reflect.ValueOf(ext).Elem().Interface()
-	}
-
 	if s, ok := ext.(Session); ok {
 		return s
 	}
@@ -135,9 +131,10 @@ func (s *DefaultSession) ParseToken(ctx context.Context, tokenStr string) error 
 	return nil
 }
 
-func (s *DefaultSession) SetIntoGinCtx(ctx *gin.Context) {
+func (s *DefaultSession) SetIntoGinCtx(ctx *gin.Context) error {
 	val := context.WithValue(context.Background(), ValueContextKey, s.Ext)
 	ctx.Request = ctx.Request.WithContext(val)
+	return nil
 }
 
 func (s DefaultSession) GetFromGinCtx(ctx *gin.Context) (interface{}, error) {
@@ -154,6 +151,13 @@ func (s DefaultSession) GetExtFromCtx(ctx context.Context) (interface{}, error) 
 
 func (s DefaultSession) ValueContextKey() string {
 	return ValueContextKey
+}
+
+func (s DefaultSession) IsParsed() bool {
+	if s.Ext != nil {
+		return true
+	}
+	return false
 }
 
 func GetAuthenticationData(ctx context.Context, key string) (interface{}, error) {
