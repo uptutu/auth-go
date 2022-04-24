@@ -39,7 +39,7 @@ import "github.com/uptutu/auth"
 
     // 使用认证中间件
     r.GET("/", func(c *gin.Context) {
-        data, err := auth.GetAuthenticationDataFrom(c)
+        data, err := auth.GetAuthenticationDataFrom(c, auth.ValueContextKey)
         if err != nil {
             c.AbortWithStatus(401)
             return
@@ -56,7 +56,7 @@ import "github.com/uptutu/auth"
 
 ```go
 func GetAuthenticationData(ctx *gin.Context) (*User, error) {
-    d, err := auth.GetAuthenticationDataFrom(ctx)
+    d, err := auth.GetAuthenticationDataFrom(ctx, auth.ValueContextKey)
     if err != nil {
         return nil, errors.Wrap(err, "get authentication data failed")
     }

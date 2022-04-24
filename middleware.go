@@ -8,7 +8,7 @@ import (
 
 const invalidTokenMsg = "invalid token"
 
-func Identify(s *Session, customFuncs ...func(s *Session)) gin.HandlerFunc {
+func Identify(s Session, customFuncs ...func(s Session)) gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 		tokenString, err := ctx.Cookie(cookieKeyAccessToken)
 		if err != nil {

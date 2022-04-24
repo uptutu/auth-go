@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"encoding/json"
 	"log"
 	"reflect"
 	"strings"
@@ -41,26 +42,43 @@ func SetJWTSecret(s string) {
 	secret = []byte(s)
 }
 
-// Session is the session data.
+type Session interface {
+	ValueContextKey() string
+	GenerateAccessToken() (string, error)
+	ParseToken(ctx context.Context, token string) error
+	SetIntoGinCtx(ctx *gin.Context)
+	GetFromGinCtx(ctx *gin.Context) (interface{}, error)
+}
+
+// DefaultSession is the session data.
 // Ext this struct to add your own data.
-type Session struct {
+type DefaultSession struct {
 	Ext interface{}
 	jwt.StandardClaims
 }
 
-func NewSession(ext interface{}) *Session {
-	return &Session{
+func NewSession(ext interface{}) Session {
+	if ext != nil &&
+		reflect.TypeOf(ext).Kind() == reflect.Ptr {
+		ext = reflect.ValueOf(ext).Elem().Interface()
+	}
+
+	if s, ok := ext.(Session); ok {
+		return s
+	}
+
+	return &DefaultSession{
 		Ext: ext,
 	}
 }
 
-func (s *Session) GenerateAccessToken() (string, error) {
+func (s *DefaultSession) GenerateAccessToken() (string, error) {
 	s.ExpiresAt = time.Now().Add(AccessTokenExpireDuration).Unix()
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, s)
 	return token.SignedString(secret)
 }
 
-func (s *Session) ParseToken(ctx context.Context, tokenStr string) error {
+func (s *DefaultSession) ParseToken(ctx context.Context, tokenStr string) error {
 	var data interface{}
 	if s.Ext != nil {
 		vt := reflect.TypeOf(s.Ext)
@@ -97,57 +115,32 @@ func (s *Session) ParseToken(ctx context.Context, tokenStr string) error {
 	}
 
 	if data != nil {
-		vt := reflect.TypeOf(data)
-		vv := reflect.ValueOf(data)
-		if vt.Kind() == reflect.Ptr {
-			vt = vt.Elem()
-			vv = vv.Elem()
+		b, err := json.Marshal(s.Ext)
+		if err != nil {
+			return errors.Wrap(err, "json marshal parsed token data error")
 		}
 
-		for i := 0; i < vt.NumField(); i++ {
-			if !vv.Field(i).CanSet() {
-				continue
-			}
-			f := vt.Field(i)
-			k := f.Tag.Get("json")
-			if k == "" {
-				k = f.Name
-			}
-			m, ok := s.Ext.(map[string]interface{})
-			if !ok {
-				continue
-			}
-			if _, ok = m[k]; !ok {
-				continue
-			}
-
-			dataType := reflect.TypeOf(m[k])
-			structType := vv.Field(i).Type()
-			if structType == dataType {
-				vv.Field(i).Set(reflect.ValueOf(m[k]))
-				continue
-			}
-			if dataType.ConvertibleTo(structType) {
-				vv.Field(i).Set(reflect.ValueOf(m[k]).Convert(structType))
-			}
-
+		if err = json.Unmarshal(b, data); err != nil {
+			return errors.Wrap(err, "json unmarshal parsed token data to given struct error")
 		}
 
-		if reflect.TypeOf(data).Kind() == reflect.Ptr {
+		// Always let Ext field set struct instance
+		if reflect.ValueOf(data).Type().Kind() == reflect.Ptr {
 			data = reflect.ValueOf(data).Elem().Interface()
 		}
+
 		s.Ext = data
 	}
 
 	return nil
 }
 
-func (s *Session) SetIntoGinCtx(ctx *gin.Context) {
+func (s *DefaultSession) SetIntoGinCtx(ctx *gin.Context) {
 	val := context.WithValue(context.Background(), ValueContextKey, s.Ext)
 	ctx.Request = ctx.Request.WithContext(val)
 }
 
-func (s Session) GetFromGinCtx(ctx *gin.Context) (interface{}, error) {
+func (s DefaultSession) GetFromGinCtx(ctx *gin.Context) (interface{}, error) {
 	sess := ctx.Request.Context().Value(ValueContextKey)
 	if sess == nil {
 		return nil, ErrNoAuthenticationData
@@ -155,20 +148,24 @@ func (s Session) GetFromGinCtx(ctx *gin.Context) (interface{}, error) {
 	return sess, nil
 }
 
-func (s Session) GetExtFromCtx(ctx context.Context) (interface{}, error) {
-	return GetAuthenticationData(ctx)
+func (s DefaultSession) GetExtFromCtx(ctx context.Context) (interface{}, error) {
+	return GetAuthenticationData(ctx, s.ValueContextKey())
 }
 
-func GetAuthenticationData(ctx context.Context) (interface{}, error) {
-	sess := ctx.Value(ValueContextKey)
+func (s DefaultSession) ValueContextKey() string {
+	return ValueContextKey
+}
+
+func GetAuthenticationData(ctx context.Context, key string) (interface{}, error) {
+	sess := ctx.Value(key)
 	if sess == nil {
 		return nil, ErrNoAuthenticationData
 	}
 	return sess, nil
 }
 
-func GetAuthenticationDataFrom(ctx *gin.Context) (interface{}, error) {
-	return GetAuthenticationData(ctx.Request.Context())
+func GetAuthenticationDataFrom(ctx *gin.Context, key string) (interface{}, error) {
+	return GetAuthenticationData(ctx.Request.Context(), key)
 }
 
 func SetCookie(ctx *gin.Context, tokenStr string) {

@@ -2,15 +2,63 @@ package auth
 
 import (
 	"context"
+	"encoding/json"
+	"github.com/gin-gonic/gin"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 )
 
+type c_type []byte
+
 type User struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
-	Age  int    `json:"age"`
+	ID   string            `json:"id"`
+	Name string            `json:"name"`
+	Age  int               `json:"age"`
+	Xx   c_type            `json:"xx"`
+	Yy   []int             `json:"yy"`
+	Zz   map[string]string `json:"zz"`
+}
+
+type asession struct {
+}
+
+func (a asession) CustomerFunc() string {
+	return "customer"
+}
+
+func (a asession) ValueContextKey() string {
+	return "ok"
+}
+
+func (a asession) GenerateAccessToken() (string, error) {
+	return "ok", nil
+}
+
+func (a asession) ParseToken(ctx context.Context, token string) error {
+	return nil
+}
+
+func (a asession) SetIntoGinCtx(ctx *gin.Context) {
+	return
+}
+
+func (a asession) GetFromGinCtx(ctx *gin.Context) (interface{}, error) {
+	return nil, nil
+}
+
+func TestNewSession(t *testing.T) {
+	s := NewSession(asession{})
+	assert.NotNil(t, s)
+	as, ok := s.(asession)
+	assert.True(t, ok)
+	assert.Equal(t, "customer", as.CustomerFunc())
+
+	s = NewSession(&asession{})
+	assert.NotNil(t, s)
+	as, ok = s.(asession)
+	assert.True(t, ok)
+	assert.Equal(t, "customer", as.CustomerFunc())
 }
 
 func TestGenerate(t *testing.T) {
@@ -29,7 +77,8 @@ func TestGenerate(t *testing.T) {
 		Name: "name2",
 		Age:  22,
 	}
-	s.Ext = u2
+
+	s = NewSession(u2)
 	token2, err := s.GenerateAccessToken()
 	assert.NoError(t, err)
 	assert.NotEmpty(t, token2)
@@ -42,38 +91,37 @@ func TestParse(t *testing.T) {
 		ID:   "new_id",
 		Name: "new_name",
 		Age:  33,
+		Xx:   c_type{'a', 'b'},
+		Yy:   []int{1, 2},
+		Zz:   map[string]string{"test": "ok"},
 	}
 	s := NewSession(u)
 	token, err := s.GenerateAccessToken()
 	assert.NoError(t, err)
 	assert.NotEmpty(t, token)
 
-	s = NewSession(nil)
-	err = s.ParseToken(context.Background(), token)
-	assert.NoError(t, err)
-	assert.NotNil(t, s.Ext)
+	b, _ := json.Marshal(u)
+	var um map[string]interface{}
+	json.Unmarshal(b, &um)
 
-	s = NewSession(User{})
-	err = s.ParseToken(context.Background(), token)
-	assert.NoError(t, err)
-	if myUser, ok := s.Ext.(User); ok {
-		assert.Equal(t, u.ID, myUser.ID)
+	tests := []struct {
+		input interface{}
+		want  interface{}
+	}{
+		{nil, um},
+		{User{}, u},
+		{&User{}, u},
+		{&u, u},
 	}
 
-	s = NewSession(&User{})
-	err = s.ParseToken(context.Background(), token)
-	assert.NoError(t, err)
-	if us, ok := s.Ext.(User); ok {
-		assert.Equal(t, u.ID, us.ID)
-	}
-
-	s = NewSession(&u)
-	token, err = s.GenerateAccessToken()
-	assert.NoError(t, err)
-	s = NewSession(&User{})
-	err = s.ParseToken(context.Background(), token)
-	assert.NoError(t, err)
-	if us, ok := s.Ext.(User); ok {
-		assert.Equal(t, u.ID, us.ID)
+	for _, test := range tests {
+		s = NewSession(test.input)
+		err = s.ParseToken(context.Background(), token)
+		assert.NoError(t, err)
+		ds, ok := s.(*DefaultSession)
+		if ok {
+			assert.NotNil(t, ds.Ext)
+		}
+		assert.Equal(t, test.want, ds.Ext)
 	}
 }
