@@ -39,12 +39,16 @@ func (a asession) ParseToken(ctx context.Context, token string) error {
 	return nil
 }
 
-func (a asession) SetIntoGinCtx(ctx *gin.Context) {
-	return
+func (a asession) SetIntoGinCtx(ctx *gin.Context) error {
+	return nil
 }
 
 func (a asession) GetFromGinCtx(ctx *gin.Context) (interface{}, error) {
 	return nil, nil
+}
+
+func (a asession) IsParsed() bool {
+	return true
 }
 
 func TestNewSession(t *testing.T) {
