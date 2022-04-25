@@ -13,7 +13,7 @@ const invalidTokenMsg = "invalid token"
 // opts is the option functions for you create your advanced handler logic.
 func Identify(s Session, opts ...OptionFunc) gin.HandlerFunc {
 	return func(ctx *gin.Context) {
-		tokenString, err := ctx.Cookie(cookieKeyAccessToken)
+		tokenString, err := s.GetToken(ctx)
 		if err != nil {
 			ctx.Errors = append(ctx.Errors, NewGinPrivateError(err))
 			ctx.JSON(http.StatusUnauthorized, invalidTokenMsg)
@@ -40,10 +40,10 @@ func Identify(s Session, opts ...OptionFunc) gin.HandlerFunc {
 		}
 		ctx.Next()
 		return
-
 	}
 }
 
+// IdentifyAndLogger is a middleware that checks for a valid token and register logger middleware.
 func IdentifyAndLogger(s Session, opts ...OptionFunc) []gin.HandlerFunc {
 	return []gin.HandlerFunc{
 		gin.Logger(),

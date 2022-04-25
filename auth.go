@@ -49,6 +49,7 @@ type Session interface {
 	IsParsed() bool
 	SetIntoGinCtx(ctx *gin.Context) error
 	GetFromGinCtx(ctx *gin.Context) (interface{}, error)
+	GetToken(ctx *gin.Context) (string, error)
 }
 
 // DefaultSession is the session data.
@@ -160,6 +161,10 @@ func (s DefaultSession) IsParsed() bool {
 	return false
 }
 
+func (s DefaultSession) GetToken(ctx *gin.Context) (string, error) {
+	return GetAccessTokenFromCookie(ctx)
+}
+
 func GetAuthenticationData(ctx context.Context, key string) (interface{}, error) {
 	sess := ctx.Value(key)
 	if sess == nil {
@@ -172,10 +177,14 @@ func GetAuthenticationDataFrom(ctx *gin.Context, key string) (interface{}, error
 	return GetAuthenticationData(ctx.Request.Context(), key)
 }
 
-func SetCookie(ctx *gin.Context, tokenStr string) {
+func SetAccessTokenToCookie(ctx *gin.Context, tokenStr string) {
 	ctx.SetCookie(cookieKeyAccessToken, tokenStr, cookieMaxAge, pathRoot, ctx.Request.URL.Host, false, false)
 }
 
 func UnSetCookie(ctx *gin.Context) {
 	ctx.SetCookie(cookieKeyAccessToken, "", -1, "/", ctx.Request.URL.Host, false, false)
+}
+
+func GetAccessTokenFromCookie(ctx *gin.Context) (string, error) {
+	return ctx.Cookie(cookieKeyAccessToken)
 }

@@ -51,6 +51,10 @@ func (a asession) IsParsed() bool {
 	return true
 }
 
+func (a asession) GetToken(ctx *gin.Context) (string, error) {
+	return "ok", nil
+}
+
 func TestNewSession(t *testing.T) {
 	s := NewSession(asession{})
 	assert.NotNil(t, s)
