@@ -3,32 +3,30 @@ package auth
 import (
 	"context"
 	"encoding/json"
+	"github.com/dgrijalva/jwt-go"
 	"log"
 	"reflect"
 	"strings"
 	"time"
 
-	"github.com/dgrijalva/jwt-go"
 	"github.com/gin-gonic/gin"
 	"github.com/pkg/errors"
 )
 
 const (
-	AccessTokenExpireDuration = time.Minute * 30
+	AccessTokenExpireDuration = time.Hour * 24
 	ValueContextKey           = "sess"
 
-	cookieMaxAge         = 60 * 60 * 48
-	cookieKeyAccessToken = "access_token"
-	defaultSecretKey     = "secret"
-	pathRoot             = "/"
+	defaultSecretKey = "secret"
 )
 
 var (
 	ErrNotInvalidToken      = errors.New("token is not invalid")
 	ErrNoAuthenticationData = errors.New("no authentication data")
+	ErrTryToSetInvalidData  = errors.New("try to set invalid data")
 
 	// use for generate and parse JWT
-	secret = []byte(defaultSecretKey)
+	_secret = []byte(defaultSecretKey)
 )
 
 // Init initializes the auth package if you need.
@@ -39,16 +37,15 @@ func Init(secret string) error {
 
 // SetJWTSecret set the secret key for JWT.
 func SetJWTSecret(s string) {
-	secret = []byte(s)
+	_secret = []byte(s)
 }
 
 type Session interface {
-	ValueContextKey() string
 	GenerateAccessToken() (string, error)
 	ParseToken(ctx context.Context, token string) error
 	IsParsed() bool
-	SetIntoGinCtx(ctx *gin.Context) error
-	GetFromGinCtx(ctx *gin.Context) (interface{}, error)
+	SetExtIntoGinContext(ctx *gin.Context) error
+	GetExtFromGinContext(ctx *gin.Context) (interface{}, error)
 	GetToken(ctx *gin.Context) (string, error)
 }
 
@@ -72,14 +69,17 @@ func NewSession(ext interface{}) Session {
 func (s *DefaultSession) GenerateAccessToken() (string, error) {
 	s.ExpiresAt = time.Now().Add(AccessTokenExpireDuration).Unix()
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, s)
-	return token.SignedString(secret)
+	return token.SignedString(_secret)
 }
 
+// ParseToken parses the token and converts it to what type you want.
 func (s *DefaultSession) ParseToken(ctx context.Context, tokenStr string) error {
+	// 找到设置的扩展数据设置的结构体类型
+	// 将用户设置的类型保存到 data 临时变量中
 	var data interface{}
 	if s.Ext != nil {
 		vt := reflect.TypeOf(s.Ext)
-		if vt.Kind() == reflect.Ptr {
+		for vt.Kind() == reflect.Ptr {
 			vt = vt.Elem()
 		}
 
@@ -88,8 +88,9 @@ func (s *DefaultSession) ParseToken(ctx context.Context, tokenStr string) error 
 		}
 	}
 
+	// 解析 Token
 	token, err := jwt.ParseWithClaims(tokenStr, s, func(token *jwt.Token) (interface{}, error) {
-		return secret, nil
+		return _secret, nil
 	})
 	if err != nil && !strings.HasPrefix(err.Error(), "token is expired by") {
 		log.Print(ctx, "parse token err : %s", err)
@@ -100,17 +101,20 @@ func (s *DefaultSession) ParseToken(ctx context.Context, tokenStr string) error 
 		return ErrNotInvalidToken
 	}
 
+	// 解析 Token 时拓展字段 interface 类型的数据会被解析到的 map[string]interface{} 覆盖
+	// 如果解析出来的数据不是 map[string]interface{} 那么说明解析到的数据已经解析到了用户自定义的类型中
 	if _, ok := s.Ext.(map[string]interface{}); !ok {
 		if reflect.TypeOf(s.Ext).Kind() == reflect.Struct {
 			return nil
 		}
 		if reflect.TypeOf(s.Ext).Kind() == reflect.Ptr &&
-			reflect.TypeOf(s.Ext).Elem().Kind() == reflect.Struct {
+			reflect.TypeOf(s.Ext).Elem().Kind() == reflect.Struct && !reflect.ValueOf(s.Ext).IsNil() {
 			s.Ext = reflect.ValueOf(s.Ext).Elem().Interface()
 			return nil
 		}
 	}
 
+	// 如果 Ext 拓展类型被取到
 	if data != nil {
 		b, err := json.Marshal(s.Ext)
 		if err != nil {
@@ -122,7 +126,7 @@ func (s *DefaultSession) ParseToken(ctx context.Context, tokenStr string) error 
 		}
 
 		// Always let Ext field set struct instance
-		if reflect.ValueOf(data).Type().Kind() == reflect.Ptr {
+		for reflect.ValueOf(data).Type().Kind() == reflect.Ptr {
 			data = reflect.ValueOf(data).Elem().Interface()
 		}
 
@@ -132,13 +136,16 @@ func (s *DefaultSession) ParseToken(ctx context.Context, tokenStr string) error 
 	return nil
 }
 
-func (s *DefaultSession) SetIntoGinCtx(ctx *gin.Context) error {
-	val := context.WithValue(context.Background(), ValueContextKey, s.Ext)
-	ctx.Request = ctx.Request.WithContext(val)
+func (s *DefaultSession) SetExtIntoGinContext(ctx *gin.Context) error {
+	if reflect.ValueOf(s.Ext).IsNil() ||
+		reflect.ValueOf(s.Ext).IsZero() {
+		return ErrTryToSetInvalidData
+	}
+	ctx.Set(ValueContextKey, s.Ext)
 	return nil
 }
 
-func (s DefaultSession) GetFromGinCtx(ctx *gin.Context) (interface{}, error) {
+func (s DefaultSession) GetExtFromGinContext(ctx *gin.Context) (interface{}, error) {
 	sess := ctx.Request.Context().Value(ValueContextKey)
 	if sess == nil {
 		return nil, ErrNoAuthenticationData
@@ -146,12 +153,8 @@ func (s DefaultSession) GetFromGinCtx(ctx *gin.Context) (interface{}, error) {
 	return sess, nil
 }
 
-func (s DefaultSession) GetExtFromCtx(ctx context.Context) (interface{}, error) {
-	return GetAuthenticationData(ctx, s.ValueContextKey())
-}
-
-func (s DefaultSession) ValueContextKey() string {
-	return ValueContextKey
+func (s DefaultSession) GetToken(ctx *gin.Context) (string, error) {
+	return GetTokenFromCookie(ctx)
 }
 
 func (s DefaultSession) IsParsed() bool {
@@ -161,30 +164,10 @@ func (s DefaultSession) IsParsed() bool {
 	return false
 }
 
-func (s DefaultSession) GetToken(ctx *gin.Context) (string, error) {
-	return GetAccessTokenFromCookie(ctx)
-}
-
-func GetAuthenticationData(ctx context.Context, key string) (interface{}, error) {
-	sess := ctx.Value(key)
-	if sess == nil {
+func GetAuthenticationDataFrom(ctx *gin.Context, key string) (interface{}, error) {
+	val, ok := ctx.Get(key)
+	if !ok {
 		return nil, ErrNoAuthenticationData
 	}
-	return sess, nil
-}
-
-func GetAuthenticationDataFrom(ctx *gin.Context, key string) (interface{}, error) {
-	return GetAuthenticationData(ctx.Request.Context(), key)
-}
-
-func SetAccessTokenToCookie(ctx *gin.Context, tokenStr string) {
-	ctx.SetCookie(cookieKeyAccessToken, tokenStr, cookieMaxAge, pathRoot, ctx.Request.URL.Host, false, false)
-}
-
-func UnSetCookie(ctx *gin.Context) {
-	ctx.SetCookie(cookieKeyAccessToken, "", -1, "/", ctx.Request.URL.Host, false, false)
-}
-
-func GetAccessTokenFromCookie(ctx *gin.Context) (string, error) {
-	return ctx.Cookie(cookieKeyAccessToken)
+	return val, nil
 }

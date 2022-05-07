@@ -11,6 +11,7 @@ const invalidTokenMsg = "invalid token"
 // Identify is a middleware that checks for a valid token
 // s is the Session implementation with u what you need
 // opts is the option functions for you create your advanced handler logic.
+// note: get token from cookie and key is "access_token"
 func Identify(s Session, opts ...OptionFunc) gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 		tokenString, err := s.GetToken(ctx)
@@ -27,7 +28,7 @@ func Identify(s Session, opts ...OptionFunc) gin.HandlerFunc {
 			ctx.Abort()
 			return
 		}
-		if err = s.SetIntoGinCtx(ctx); err != nil {
+		if err = s.SetExtIntoGinContext(ctx); err != nil {
 			ctx.Errors = append(ctx.Errors, NewGinPrivateError(err))
 			ctx.JSON(http.StatusUnauthorized, invalidTokenMsg)
 			ctx.Abort()

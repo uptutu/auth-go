@@ -39,11 +39,11 @@ func (a asession) ParseToken(ctx context.Context, token string) error {
 	return nil
 }
 
-func (a asession) SetIntoGinCtx(ctx *gin.Context) error {
+func (a asession) SetExtIntoGinContext(ctx *gin.Context) error {
 	return nil
 }
 
-func (a asession) GetFromGinCtx(ctx *gin.Context) (interface{}, error) {
+func (a asession) GetExtFromGinContext(ctx *gin.Context) (interface{}, error) {
 	return nil, nil
 }
 
