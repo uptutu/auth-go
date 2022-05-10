@@ -12,8 +12,9 @@ const invalidTokenMsg = "invalid token"
 // s is the Session implementation with u what you need
 // opts is the option functions for you create your advanced handler logic.
 // note: get token from cookie and key is "access_token"
-func Identify(s Session, opts ...OptionFunc) gin.HandlerFunc {
+func Identify(ext interface{}, opts ...OptionFunc) gin.HandlerFunc {
 	return func(ctx *gin.Context) {
+		s := NewSession(ext)
 		tokenString, err := s.GetToken(ctx)
 		if err != nil {
 			ctx.Errors = append(ctx.Errors, NewGinPrivateError(err))

@@ -33,7 +33,7 @@ import "github.com/uptutu/auth"
     // 使用认证中间件
     // NewSession 函数中传入生成 Token 的结构体实例或指针皆可
     // 解析到的用户信息会存在 ctx *gin.Context 中
-    r.Use(auth.Identify(auth.NewSession(User{})))
+    r.Use(auth.Identify(User{}))
 
     // 使用认证中间件
     r.GET("/", func(c *gin.Context) {
@@ -85,40 +85,49 @@ func main() {
 实现自己实现 `auth.Session` 的接口，用一个自己的结构体生成和解析 Token。
 ```go
 type Session interface {
-	ValueContextKey() string
-	GenerateAccessToken() (string, error)
-	ParseToken(ctx context.Context, token string) error
-	SetIntoGinCtx(ctx *gin.Context)
-	GetFromGinCtx(ctx *gin.Context) (interface{}, error)
+    GenerateAccessToken() (string, error)
+    ParseToken(ctx context.Context, token string) error
+    IsParsed() bool
+    SetExtIntoGinContext(ctx *gin.Context) error
+    GetExtFromGinContext(ctx *gin.Context) (interface{}, error)
+    GetToken(ctx *gin.Context) (string, error)
 }
 
 ...
-type asession struct {
+
+type customSession struct{}
+
+func ( customSession )GenerateAccessToken() ( string, error) {
+//TODO implement me
+panic("your own custom token generator")
 }
 
-func (a asession) CustomerFunc() string {
-return "customer"
+func ( customSession )ParseToken(ctx context.Context, token string) error {
+//TODO implement me
+panic("your own custom token parser")
 }
 
-func (a asession) ValueContextKey() string {
-return "ok"
+func ( customSession )IsParsed() bool {
+//TODO implement me
+panic("implement me")
 }
 
-func (a asession) GenerateAccessToken() (string, error) {
-return "ok", nil
+func ( customSession )SetExtIntoGinContext(ctx *gin.Context) error {
+//TODO implement me
+panic("implement me")
 }
 
-func (a asession) ParseToken(ctx context.Context, token string) error {
-return nil
+func ( customSession )GetExtFromGinContext(ctx *gin.Context) ( interface{}, error) {
+//TODO implement me
+panic("implement me")
 }
 
-func (a asession) SetIntoGinCtx(ctx *gin.Context) {
-return
+func ( customSession )GetToken(ctx *gin.Context) ( string, error) {
+//TODO implement me
+panic("your own custom token generator")
 }
 
-func (a asession) GetFromGinCtx(ctx *gin.Context) (interface{}, error) {
-return nil, nil
-}
+
 
 ```
 中间件上的使用流程上也没有改变：
@@ -126,7 +135,7 @@ return nil, nil
     // 使用认证中间件
     // NewSession 函数中传入生成 Token 的结构体实例或指针皆可
     // 解析到的用户信息会存在 ctx *gin.Context 中
-    r.Use(auth.Identify(auth.NewSession(asession{})))
+    r.Use(auth.Identify(customSession{}))
 
     // 使用认证中间件
     r.GET("/", func(c *gin.Context) {
